@@ -1,9 +1,19 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { Chess } from "chess.js";
 import { stockfish } from "../engine/stockfish";
+import type { AnalyzeResult } from "../engine/stockfish";
 
 type LogEntry = { ts: number; level: "info" | "error"; message: string };
 type HeaderInfo = { Event: string; White: string; Black: string; Result: string };
+type EvalStatus = "idle" | "analyzing" | "error";
+type EvalState = {
+  status: EvalStatus;
+  scoreLabel: string;
+  bestmove: string;
+  principalVariation: string;
+  barPercent: number;
+  errorMessage: string;
+};
 
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
@@ -45,6 +55,32 @@ function fenToCells(fen: string): string[] {
   return cells;
 }
 
+function formatEngineScore(result: AnalyzeResult): string {
+  if (result.score.type === "mate") {
+    const sign = result.score.value < 0 ? "-" : "";
+    return `${sign}M#${Math.abs(result.score.value)}`;
+  }
+
+  const pawns = result.score.value / 100;
+  const sign = pawns > 0 ? "+" : "";
+  return `${sign}${pawns.toFixed(2)}`;
+}
+
+function scoreToBarPercent(result: AnalyzeResult): number {
+  const cp = result.score.type === "cp" ? result.score.value : result.score.value > 0 ? 600 : -600;
+  const clamped = Math.max(-600, Math.min(600, cp));
+  return ((clamped + 600) / 1200) * 100;
+}
+
+const INITIAL_EVAL_STATE: EvalState = {
+  status: "idle",
+  scoreLabel: "-",
+  bestmove: "-",
+  principalVariation: "-",
+  barPercent: 50,
+  errorMessage: "",
+};
+
 export function App(): JSX.Element {
   const [pgn, setPgn] = useState<string>("");
   const [headers, setHeaders] = useState<HeaderInfo>({
@@ -56,11 +92,12 @@ export function App(): JSX.Element {
   const [moves, setMoves] = useState<string[]>([]);
   const [positions, setPositions] = useState<string[]>([new Chess().fen()]);
   const [currentPly, setCurrentPly] = useState<number>(0);
-  const [isEngineBusy, setIsEngineBusy] = useState<boolean>(false);
   const [engineInitDone, setEngineInitDone] = useState<boolean>(false);
+  const [evaluation, setEvaluation] = useState<EvalState>(INITIAL_EVAL_STATE);
   const [logs, setLogs] = useState<LogEntry[]>([
     { ts: Date.now(), level: "info", message: "Listo. Pegá un PGN y apretá Analizar." },
   ]);
+  const analysisVersionRef = useRef<number>(0);
 
   function pushLog(level: LogEntry["level"], message: string) {
     setLogs((prev) => [...prev, { ts: Date.now(), level, message }]);
@@ -76,8 +113,20 @@ export function App(): JSX.Element {
   const currentFen = positions[currentPly] ?? START_FEN;
   const boardCells = useMemo(() => fenToCells(currentFen), [currentFen]);
 
-  async function runEngineAnalysis(fen: string, reason: string): Promise<void> {
-    setIsEngineBusy(true);
+  function onPositionChange(nextPly: number): void {
+    setCurrentPly(nextPly);
+    analysisVersionRef.current += 1;
+    setEvaluation((prev) => {
+      if (prev.status !== "analyzing") return prev;
+      return { ...prev, status: "idle" };
+    });
+  }
+
+  async function evaluateCurrentPosition(): Promise<void> {
+    const requestVersion = ++analysisVersionRef.current;
+    const fenAtRequest = currentFen;
+    setEvaluation((prev) => ({ ...prev, status: "analyzing", errorMessage: "" }));
+
     try {
       if (!engineInitDone) {
         pushLog("info", "Inicializando Stockfish (uci/isready)...");
@@ -86,18 +135,31 @@ export function App(): JSX.Element {
         pushLog("info", "Stockfish listo.");
       }
 
-      pushLog("info", `Analizando (${reason})...`);
-      const result = await stockfish.analyzePosition(fen, { depth: 12 });
-      const scoreText = result.score.type === "mate" ? `mate ${result.score.value}` : `cp ${result.score.value}`;
-      pushLog("info", `bestmove: ${result.bestmove} | score: ${scoreText}`);
-      if (result.principalVariation) {
-        pushLog("info", `pv: ${result.principalVariation}`);
+      pushLog("info", `Analizando FEN actual (ply ${currentPly})...`);
+      const result = await stockfish.analyzePosition(fenAtRequest, { depth: 12 });
+      if (requestVersion !== analysisVersionRef.current) {
+        pushLog("info", "Resultado obsoleto descartado por cambio de jugada.");
+        return;
       }
+
+      const scoreLabel = formatEngineScore(result);
+      const principalVariation = result.principalVariation ?? "-";
+      const barPercent = scoreToBarPercent(result);
+
+      setEvaluation({
+        status: "idle",
+        scoreLabel,
+        bestmove: result.bestmove,
+        principalVariation,
+        barPercent,
+        errorMessage: "",
+      });
+      pushLog("info", `Evaluación: ${scoreLabel} | bestmove: ${result.bestmove}`);
     } catch (error) {
+      if (requestVersion !== analysisVersionRef.current) return;
       const message = error instanceof Error ? error.message : "Fallo al analizar posición";
-      pushLog("error", message);
-    } finally {
-      setIsEngineBusy(false);
+      setEvaluation((prev) => ({ ...prev, status: "error", errorMessage: message }));
+      pushLog("error", `Engine: ${message}`);
     }
   }
 
@@ -140,15 +202,15 @@ export function App(): JSX.Element {
     setMoves(parsedMoves);
     setPositions(parsedPositions);
     const finalPly = parsedPositions.length - 1;
-    const finalFen = parsedPositions[finalPly];
     setCurrentPly(finalPly);
+    analysisVersionRef.current += 1;
+    setEvaluation(INITIAL_EVAL_STATE);
 
     pushLog("info", `PGN cargado correctamente (${parsedMoves.length} ply).`);
     pushLog(
       "info",
       `Headers: ${parsedHeaders.White ?? "-"} vs ${parsedHeaders.Black ?? "-"} (${parsedHeaders.Result ?? "-"})`
     );
-    await runEngineAnalysis(finalFen, "posición final del PGN");
   }
 
   return (
@@ -171,7 +233,7 @@ export function App(): JSX.Element {
             spellCheck={false}
           />
           <div className="row">
-            <button className="btn" onClick={() => void onAnalyze()} disabled={isEngineBusy}>
+            <button className="btn" onClick={() => void onAnalyze()}>
               Analizar
             </button>
             <button className="btn secondary" onClick={() => setPgn("")}>
@@ -215,36 +277,65 @@ export function App(): JSX.Element {
           </div>
 
           <div className="row controls">
-            <button className="btn secondary" onClick={() => setCurrentPly(0)} disabled={currentPly === 0}>
+            <button className="btn secondary" onClick={() => onPositionChange(0)} disabled={currentPly === 0}>
               |&lt;
             </button>
             <button
               className="btn secondary"
-              onClick={() => setCurrentPly((prev) => Math.max(0, prev - 1))}
+              onClick={() => onPositionChange(Math.max(0, currentPly - 1))}
               disabled={currentPly === 0}
             >
               &lt;
             </button>
             <button
               className="btn secondary"
-              onClick={() => setCurrentPly((prev) => Math.min(positions.length - 1, prev + 1))}
+              onClick={() => onPositionChange(Math.min(positions.length - 1, currentPly + 1))}
               disabled={currentPly >= positions.length - 1}
             >
               &gt;
             </button>
             <button
               className="btn secondary"
-              onClick={() => setCurrentPly(positions.length - 1)}
+              onClick={() => onPositionChange(positions.length - 1)}
               disabled={currentPly >= positions.length - 1}
             >
               &gt;|
             </button>
-            <button className="btn secondary" onClick={() => void runEngineAnalysis(currentFen, "FEN actual")} disabled={isEngineBusy}>
-              Engine FEN
+            <button
+              className="btn secondary"
+              onClick={() => void evaluateCurrentPosition()}
+              disabled={evaluation.status === "analyzing"}
+            >
+              Evaluar posición actual
             </button>
           </div>
           <p className="muted">Ply actual: {currentPly} / {Math.max(positions.length - 1, 0)}</p>
           <p className="muted">FEN: {currentFen}</p>
+        </section>
+
+        <section className="card evalCard">
+          <h2>Evaluación</h2>
+          <div className="evalRow">
+            <span className="muted">Estado</span>
+            <strong>{evaluation.status}</strong>
+          </div>
+          <div className="evalRow">
+            <span className="muted">Score</span>
+            <strong>{evaluation.scoreLabel}</strong>
+          </div>
+          <div className="evalRow">
+            <span className="muted">Best move</span>
+            <strong>{evaluation.bestmove}</strong>
+          </div>
+          <div className="evalRow">
+            <span className="muted">PV</span>
+            <strong className="monoText">{evaluation.principalVariation}</strong>
+          </div>
+          <div className="evalBar">
+            <div className="evalBarFill" style={{ width: `${evaluation.barPercent}%` }} />
+          </div>
+          {evaluation.status === "error" ? <p className="errorText">{evaluation.errorMessage}</p> : null}
+          <p className="muted">Barra clamped a cp +/-600.</p>
         </section>
 
         <section className="card moves">
@@ -258,7 +349,7 @@ export function App(): JSX.Element {
                 <button
                   key={`${index}-${san}`}
                   className={`moveBtn ${currentPly === index + 1 ? "active" : ""}`}
-                  onClick={() => setCurrentPly(index + 1)}
+                  onClick={() => onPositionChange(index + 1)}
                 >
                   {index + 1}. {san}
                 </button>

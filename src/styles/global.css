@@ -121,6 +121,45 @@ h2 { margin: 0 0 10px 0; font-size: 16px; color: var(--text); }
 
 .controls { margin-top: 12px; }
 
+.btn:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.evalCard { grid-column: 1 / -1; }
+.evalRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.evalBar {
+  margin-top: 8px;
+  height: 16px;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: linear-gradient(90deg, rgba(255, 92, 92, .38), rgba(230,230,230,.25), rgba(90, 200, 120, .38));
+}
+
+.evalBarFill {
+  height: 100%;
+  background: rgba(255, 255, 255, .75);
+  transition: width .18s ease;
+}
+
+.monoText {
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.errorText {
+  color: #ff9ea3;
+  margin: 8px 0 0;
+}
+
 .moves { grid-column: 1 / -1; }
 .moveList {
   display: flex;
