@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Chess } from "chess.js";
+import { stockfish } from "../engine/stockfish";
 
 type LogEntry = { ts: number; level: "info" | "error"; message: string };
 type HeaderInfo = { Event: string; White: string; Black: string; Result: string };
@@ -55,6 +56,8 @@ export function App(): JSX.Element {
   const [moves, setMoves] = useState<string[]>([]);
   const [positions, setPositions] = useState<string[]>([new Chess().fen()]);
   const [currentPly, setCurrentPly] = useState<number>(0);
+  const [isEngineBusy, setIsEngineBusy] = useState<boolean>(false);
+  const [engineInitDone, setEngineInitDone] = useState<boolean>(false);
   const [logs, setLogs] = useState<LogEntry[]>([
     { ts: Date.now(), level: "info", message: "Listo. Pegá un PGN y apretá Analizar." },
   ]);
@@ -73,7 +76,32 @@ export function App(): JSX.Element {
   const currentFen = positions[currentPly] ?? START_FEN;
   const boardCells = useMemo(() => fenToCells(currentFen), [currentFen]);
 
-  function onAnalyze() {
+  async function runEngineAnalysis(fen: string, reason: string): Promise<void> {
+    setIsEngineBusy(true);
+    try {
+      if (!engineInitDone) {
+        pushLog("info", "Inicializando Stockfish (uci/isready)...");
+        await stockfish.init();
+        setEngineInitDone(true);
+        pushLog("info", "Stockfish listo.");
+      }
+
+      pushLog("info", `Analizando (${reason})...`);
+      const result = await stockfish.analyzePosition(fen, { depth: 12 });
+      const scoreText = result.score.type === "mate" ? `mate ${result.score.value}` : `cp ${result.score.value}`;
+      pushLog("info", `bestmove: ${result.bestmove} | score: ${scoreText}`);
+      if (result.principalVariation) {
+        pushLog("info", `pv: ${result.principalVariation}`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Fallo al analizar posición";
+      pushLog("error", message);
+    } finally {
+      setIsEngineBusy(false);
+    }
+  }
+
+  async function onAnalyze() {
     const trimmed = pgn.trim();
     if (!trimmed) {
       pushLog("error", "No hay PGN. Pegá un PGN primero.");
@@ -111,13 +139,16 @@ export function App(): JSX.Element {
     });
     setMoves(parsedMoves);
     setPositions(parsedPositions);
-    setCurrentPly(0);
+    const finalPly = parsedPositions.length - 1;
+    const finalFen = parsedPositions[finalPly];
+    setCurrentPly(finalPly);
 
     pushLog("info", `PGN cargado correctamente (${parsedMoves.length} ply).`);
     pushLog(
       "info",
       `Headers: ${parsedHeaders.White ?? "-"} vs ${parsedHeaders.Black ?? "-"} (${parsedHeaders.Result ?? "-"})`
     );
+    await runEngineAnalysis(finalFen, "posición final del PGN");
   }
 
   return (
@@ -140,7 +171,7 @@ export function App(): JSX.Element {
             spellCheck={false}
           />
           <div className="row">
-            <button className="btn" onClick={onAnalyze}>
+            <button className="btn" onClick={() => void onAnalyze()} disabled={isEngineBusy}>
               Analizar
             </button>
             <button className="btn secondary" onClick={() => setPgn("")}>
@@ -207,6 +238,9 @@ export function App(): JSX.Element {
               disabled={currentPly >= positions.length - 1}
             >
               &gt;|
+            </button>
+            <button className="btn secondary" onClick={() => void runEngineAnalysis(currentFen, "FEN actual")} disabled={isEngineBusy}>
+              Engine FEN
             </button>
           </div>
           <p className="muted">Ply actual: {currentPly} / {Math.max(positions.length - 1, 0)}</p>
