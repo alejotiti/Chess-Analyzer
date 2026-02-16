@@ -15,5 +15,12 @@ npm run dev
 - `codex/CURRENT_STAGE.txt` indica la etapa actual.
 - Cada etapa tiene docs en `codex/stages/XX/`.
 
+## Deploy (GitHub Pages)
+- Este repo incluye workflow en `.github/workflows/deploy-pages.yml`.
+- El build usa base path `/Chess-Analyzer/` en `vite.config.ts`.
+- URL esperada de Pages: `https://alejotiti.github.io/Chess-Analyzer/`.
+
 ## Licencias
-Stockfish es GPL. Cuando integremos el engine, agregaremos los archivos correspondientes en `LICENSES/` y lo documentaremos.
+- `LICENSES/chess.js.txt` (BSD-2-Clause, chess.js).
+- `LICENSES/stockfish.txt` (GPL-3.0, Stockfish.js/Stockfish).
+- Verificar compatibilidad de distribución si se redistribuye el bundle con motor GPL.

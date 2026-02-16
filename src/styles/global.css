@@ -60,6 +60,35 @@ h2 { margin: 0 0 10px 0; font-size: 16px; color: var(--text); }
 
 .row { display: flex; gap: 10px; margin-top: 10px; }
 
+.settingsPanel {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.settingsPanel h3 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+}
+
+.settingsRow {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.settingLabel {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.select {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(0,0,0,.22);
+  color: var(--text);
+  padding: 6px 8px;
+}
+
 .btn {
   border: 1px solid var(--border);
   background: rgba(160, 140, 255, .18);

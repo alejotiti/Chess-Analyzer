@@ -1,6 +1,5 @@
 import React, { useMemo, useRef, useState } from "react";
 import { Chess } from "chess.js";
-import { stockfish } from "../engine/stockfish";
 import type { AnalyzeResult } from "../engine/stockfish";
 
 type LogEntry = { ts: number; level: "info" | "error"; message: string };
@@ -15,21 +14,32 @@ type EvalState = {
   errorMessage: string;
 };
 
+type AnalysisMode = "depth" | "movetime";
+
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 const PIECE_TO_GLYPH: Record<string, string> = {
-  p: "‚ôü",
-  r: "‚ôú",
-  n: "‚ôû",
-  b: "‚ôù",
-  q: "‚ôõ",
-  k: "‚ôö",
-  P: "‚ôô",
-  R: "‚ôñ",
-  N: "‚ôò",
-  B: "‚ôó",
-  Q: "‚ôï",
-  K: "‚ôî",
+  p: "?",
+  r: "?",
+  n: "?",
+  b: "?",
+  q: "?",
+  k: "?",
+  P: "?",
+  R: "?",
+  N: "?",
+  B: "?",
+  Q: "?",
+  K: "?",
+};
+
+const INITIAL_EVAL_STATE: EvalState = {
+  status: "idle",
+  scoreLabel: "-",
+  bestmove: "-",
+  principalVariation: "-",
+  barPercent: 50,
+  errorMessage: "",
 };
 
 function formatTime(ts: number): string {
@@ -72,15 +82,6 @@ function scoreToBarPercent(result: AnalyzeResult): number {
   return ((clamped + 600) / 1200) * 100;
 }
 
-const INITIAL_EVAL_STATE: EvalState = {
-  status: "idle",
-  scoreLabel: "-",
-  bestmove: "-",
-  principalVariation: "-",
-  barPercent: 50,
-  errorMessage: "",
-};
-
 export function App(): JSX.Element {
   const [pgn, setPgn] = useState<string>("");
   const [headers, setHeaders] = useState<HeaderInfo>({
@@ -94,10 +95,15 @@ export function App(): JSX.Element {
   const [currentPly, setCurrentPly] = useState<number>(0);
   const [engineInitDone, setEngineInitDone] = useState<boolean>(false);
   const [evaluation, setEvaluation] = useState<EvalState>(INITIAL_EVAL_STATE);
+  const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("depth");
+  const [depthSetting, setDepthSetting] = useState<number>(12);
+  const [movetimeSetting, setMovetimeSetting] = useState<number>(500);
   const [logs, setLogs] = useState<LogEntry[]>([
-    { ts: Date.now(), level: "info", message: "Listo. Peg√° un PGN y apret√° Analizar." },
+    { ts: Date.now(), level: "info", message: "Listo. Peg· un PGN y apret· Analizar." },
   ]);
+
   const analysisVersionRef = useRef<number>(0);
+  const engineModuleRef = useRef<Promise<typeof import("../engine/stockfish")> | null>(null);
 
   function pushLog(level: LogEntry["level"], message: string) {
     setLogs((prev) => [...prev, { ts: Date.now(), level, message }]);
@@ -113,13 +119,18 @@ export function App(): JSX.Element {
   const currentFen = positions[currentPly] ?? START_FEN;
   const boardCells = useMemo(() => fenToCells(currentFen), [currentFen]);
 
+  async function getEngineModule() {
+    if (!engineModuleRef.current) {
+      pushLog("info", "Cargando mÛdulo de engine on-demand...");
+      engineModuleRef.current = import("../engine/stockfish");
+    }
+    return engineModuleRef.current;
+  }
+
   function onPositionChange(nextPly: number): void {
     setCurrentPly(nextPly);
     analysisVersionRef.current += 1;
-    setEvaluation((prev) => {
-      if (prev.status !== "analyzing") return prev;
-      return { ...prev, status: "idle" };
-    });
+    setEvaluation((prev) => (prev.status === "analyzing" ? { ...prev, status: "idle" } : prev));
   }
 
   async function evaluateCurrentPosition(): Promise<void> {
@@ -128,6 +139,9 @@ export function App(): JSX.Element {
     setEvaluation((prev) => ({ ...prev, status: "analyzing", errorMessage: "" }));
 
     try {
+      const engineModule = await getEngineModule();
+      const stockfish = engineModule.getStockfish();
+
       if (!engineInitDone) {
         pushLog("info", "Inicializando Stockfish (uci/isready)...");
         await stockfish.init();
@@ -135,38 +149,44 @@ export function App(): JSX.Element {
         pushLog("info", "Stockfish listo.");
       }
 
-      pushLog("info", `Analizando FEN actual (ply ${currentPly})...`);
-      const result = await stockfish.analyzePosition(fenAtRequest, { depth: 12 });
+      const options =
+        analysisMode === "depth" ? { depth: depthSetting } : { movetimeMs: movetimeSetting };
+
+      pushLog(
+        "info",
+        analysisMode === "depth"
+          ? `Analizando con depth ${depthSetting}...`
+          : `Analizando con movetime ${movetimeSetting}ms...`
+      );
+
+      const result = await stockfish.analyzePosition(fenAtRequest, options);
       if (requestVersion !== analysisVersionRef.current) {
         pushLog("info", "Resultado obsoleto descartado por cambio de jugada.");
         return;
       }
 
-      const scoreLabel = formatEngineScore(result);
-      const principalVariation = result.principalVariation ?? "-";
-      const barPercent = scoreToBarPercent(result);
-
       setEvaluation({
         status: "idle",
-        scoreLabel,
+        scoreLabel: formatEngineScore(result),
         bestmove: result.bestmove,
-        principalVariation,
-        barPercent,
+        principalVariation: result.principalVariation ?? "-",
+        barPercent: scoreToBarPercent(result),
         errorMessage: "",
       });
-      pushLog("info", `Evaluaci√≥n: ${scoreLabel} | bestmove: ${result.bestmove}`);
+
+      pushLog("info", `EvaluaciÛn: ${formatEngineScore(result)} | bestmove: ${result.bestmove}`);
     } catch (error) {
       if (requestVersion !== analysisVersionRef.current) return;
-      const message = error instanceof Error ? error.message : "Fallo al analizar posici√≥n";
+      const message = error instanceof Error ? error.message : "Fallo al analizar posiciÛn";
       setEvaluation((prev) => ({ ...prev, status: "error", errorMessage: message }));
       pushLog("error", `Engine: ${message}`);
     }
   }
 
-  async function onAnalyze() {
+  function onAnalyze() {
     const trimmed = pgn.trim();
     if (!trimmed) {
-      pushLog("error", "No hay PGN. Peg√° un PGN primero.");
+      pushLog("error", "No hay PGN. Peg· un PGN primero.");
       return;
     }
 
@@ -174,7 +194,7 @@ export function App(): JSX.Element {
     try {
       parsed.loadPgn(trimmed);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "PGN inv√°lido";
+      const message = error instanceof Error ? error.message : "PGN inv·lido";
       pushLog("error", `No se pudo parsear el PGN: ${message}`);
       return;
     }
@@ -182,7 +202,7 @@ export function App(): JSX.Element {
     const parsedHeaders = parsed.header();
     const parsedMoves = parsed.history();
     const replay = new Chess();
-    const parsedPositions = [replay.fen()]; // Elegimos navegar por ply: una posici√≥n por SAN.
+    const parsedPositions = [replay.fen()]; // NavegaciÛn por ply: una posiciÛn por SAN.
 
     for (const san of parsedMoves) {
       const result = replay.move(san);
@@ -201,8 +221,7 @@ export function App(): JSX.Element {
     });
     setMoves(parsedMoves);
     setPositions(parsedPositions);
-    const finalPly = parsedPositions.length - 1;
-    setCurrentPly(finalPly);
+    setCurrentPly(parsedPositions.length - 1);
     analysisVersionRef.current += 1;
     setEvaluation(INITIAL_EVAL_STATE);
 
@@ -218,7 +237,7 @@ export function App(): JSX.Element {
       <header className="header">
         <div>
           <h1>Chess Analyzer</h1>
-          <p className="muted">0 backend ‚Ä¢ PGN ‚Üí evaluaci√≥n con Stockfish (WASM) ‚Ä¢ por etapas</p>
+          <p className="muted">0 backend ï PGN ? evaluaciÛn con Stockfish (WASM) ï por etapas</p>
         </div>
       </header>
 
@@ -228,17 +247,69 @@ export function App(): JSX.Element {
           <textarea
             value={pgn}
             onChange={(e) => setPgn(e.target.value)}
-            placeholder="Peg√° ac√° el PGN..."
+            placeholder="Peg· ac· el PGN..."
             className="textarea"
             spellCheck={false}
           />
           <div className="row">
-            <button className="btn" onClick={() => void onAnalyze()}>
+            <button className="btn" onClick={onAnalyze}>
               Analizar
             </button>
             <button className="btn secondary" onClick={() => setPgn("")}>
               Limpiar
             </button>
+          </div>
+
+          <div className="settingsPanel">
+            <h3>Settings de an·lisis</h3>
+            <div className="row settingsRow">
+              <label className="settingLabel" htmlFor="mode">
+                Modo
+              </label>
+              <select
+                id="mode"
+                className="select"
+                value={analysisMode}
+                onChange={(e) => setAnalysisMode(e.target.value as AnalysisMode)}
+              >
+                <option value="depth">Depth</option>
+                <option value="movetime">Movetime</option>
+              </select>
+
+              {analysisMode === "depth" ? (
+                <>
+                  <label className="settingLabel" htmlFor="depth">
+                    Depth
+                  </label>
+                  <select
+                    id="depth"
+                    className="select"
+                    value={depthSetting}
+                    onChange={(e) => setDepthSetting(Number(e.target.value))}
+                  >
+                    <option value={8}>8</option>
+                    <option value={12}>12</option>
+                    <option value={16}>16</option>
+                  </select>
+                </>
+              ) : (
+                <>
+                  <label className="settingLabel" htmlFor="movetime">
+                    Movetime
+                  </label>
+                  <select
+                    id="movetime"
+                    className="select"
+                    value={movetimeSetting}
+                    onChange={(e) => setMovetimeSetting(Number(e.target.value))}
+                  >
+                    <option value={200}>200 ms</option>
+                    <option value={500}>500 ms</option>
+                    <option value={1000}>1000 ms</option>
+                  </select>
+                </>
+              )}
+            </div>
           </div>
         </section>
 
@@ -306,7 +377,7 @@ export function App(): JSX.Element {
               onClick={() => void evaluateCurrentPosition()}
               disabled={evaluation.status === "analyzing"}
             >
-              Evaluar posici√≥n actual
+              Evaluar posiciÛn actual
             </button>
           </div>
           <p className="muted">Ply actual: {currentPly} / {Math.max(positions.length - 1, 0)}</p>
@@ -314,7 +385,7 @@ export function App(): JSX.Element {
         </section>
 
         <section className="card evalCard">
-          <h2>Evaluaci√≥n</h2>
+          <h2>EvaluaciÛn</h2>
           <div className="evalRow">
             <span className="muted">Estado</span>
             <strong>{evaluation.status}</strong>
@@ -340,10 +411,10 @@ export function App(): JSX.Element {
 
         <section className="card moves">
           <h2>Jugadas (SAN)</h2>
-          <p className="muted">Navegaci√≥n por ply: cada SAN equivale a una posici√≥n.</p>
+          <p className="muted">NavegaciÛn por ply: cada SAN equivale a una posiciÛn.</p>
           <div className="moveList">
             {moves.length === 0 ? (
-              <div className="muted">Todav√≠a no hay jugadas cargadas.</div>
+              <div className="muted">TodavÌa no hay jugadas cargadas.</div>
             ) : (
               moves.map((san, index) => (
                 <button

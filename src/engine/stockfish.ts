@@ -26,13 +26,15 @@ type ResponseMessage =
   | { id: number; type: "error"; error: string };
 
 class StockfishClient {
-  private worker: Worker;
+  private worker: Worker | null = null;
   private nextId = 1;
   private pending = new Map<number, PendingRequest>();
   private queue: Promise<unknown> = Promise.resolve();
   private initDone = false;
 
-  constructor() {
+  private ensureWorker(): Worker {
+    if (this.worker) return this.worker;
+
     this.worker = new Worker(new URL("./stockfish.worker.ts", import.meta.url), { type: "module" });
     this.worker.onmessage = (event: MessageEvent<ResponseMessage>) => {
       const msg = event.data;
@@ -56,12 +58,15 @@ class StockfishClient {
         principalVariation: msg.principalVariation,
       } satisfies AnalyzeResult);
     };
+
+    return this.worker;
   }
 
   private request(message: RequestMessage): Promise<unknown> {
     return new Promise<unknown>((resolve, reject) => {
+      const worker = this.ensureWorker();
       this.pending.set(message.id, { resolve, reject });
-      this.worker.postMessage(message);
+      worker.postMessage(message);
     });
   }
 
@@ -85,7 +90,9 @@ class StockfishClient {
   }
 
   dispose(): void {
-    this.worker.terminate();
+    this.worker?.terminate();
+    this.worker = null;
+    this.initDone = false;
     for (const [, pending] of this.pending) {
       pending.reject(new Error("Stockfish client cerrado"));
     }
@@ -93,4 +100,9 @@ class StockfishClient {
   }
 }
 
-export const stockfish = new StockfishClient();
+let stockfishSingleton: StockfishClient | null = null;
+
+export function getStockfish(): StockfishClient {
+  if (!stockfishSingleton) stockfishSingleton = new StockfishClient();
+  return stockfishSingleton;
+}
