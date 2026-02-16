@@ -1,0 +1,5 @@
+- [ ] Evaluation bar animada
+- [ ] Transiciones suaves implementadas
+- [ ] Toggle dark/light funcional
+- [ ] UI se siente consistente y profesional
+- [ ] Sin regresiones funcionales

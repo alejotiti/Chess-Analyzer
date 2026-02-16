@@ -1,0 +1,75 @@
+.ui-card {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow);
+}
+
+.ui-button {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.ui-button-primary {
+  background: rgba(120, 160, 255, 0.24);
+}
+
+.ui-button-primary:hover {
+  background: rgba(120, 160, 255, 0.34);
+}
+
+.ui-button-secondary {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.ui-button-secondary:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.ui-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.ui-select {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--text);
+  padding: 6px 8px;
+}
+
+.ui-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.ui-badge-neutral {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ui-badge-success {
+  background: rgba(120, 255, 170, 0.16);
+}
+
+.ui-badge-danger {
+  background: rgba(255, 120, 120, 0.16);
+}
+
+button:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+

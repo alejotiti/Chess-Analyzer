@@ -1,0 +1,5 @@
+- [ ] Componentes UI creados
+- [ ] Tokens de diseño centralizados
+- [ ] Responsive funcional
+- [ ] Estados visuales implementados
+- [ ] Accesibilidad básica (focus visible)
