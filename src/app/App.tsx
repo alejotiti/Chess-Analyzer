@@ -32,6 +32,7 @@ export function App(): JSX.Element {
     }
     pushLog("info", "PGN recibido. (Stage 00: todavía no parseamos ni evaluamos.)");
     pushLog("info", `Longitud: ${trimmed.length} chars`);
+    pushLog("info", `PGN:\n${trimmed}`);
   }
 
   return (
