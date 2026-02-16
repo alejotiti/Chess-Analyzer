@@ -1,14 +1,60 @@
 import React, { useMemo, useState } from "react";
+import { Chess } from "chess.js";
 
 type LogEntry = { ts: number; level: "info" | "error"; message: string };
+type HeaderInfo = { Event: string; White: string; Black: string; Result: string };
+
+const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+
+const PIECE_TO_GLYPH: Record<string, string> = {
+  p: "♟",
+  r: "♜",
+  n: "♞",
+  b: "♝",
+  q: "♛",
+  k: "♚",
+  P: "♙",
+  R: "♖",
+  N: "♘",
+  B: "♗",
+  Q: "♕",
+  K: "♔",
+};
 
 function formatTime(ts: number): string {
   const d = new Date(ts);
   return d.toLocaleTimeString();
 }
 
+function fenToCells(fen: string): string[] {
+  const [boardPart] = fen.split(" ");
+  const rows = boardPart.split("/");
+  const cells: string[] = [];
+
+  for (const row of rows) {
+    for (const char of row) {
+      if (char >= "1" && char <= "8") {
+        for (let i = 0; i < Number(char); i += 1) cells.push(".");
+      } else {
+        cells.push(char);
+      }
+    }
+  }
+
+  return cells;
+}
+
 export function App(): JSX.Element {
   const [pgn, setPgn] = useState<string>("");
+  const [headers, setHeaders] = useState<HeaderInfo>({
+    Event: "-",
+    White: "-",
+    Black: "-",
+    Result: "-",
+  });
+  const [moves, setMoves] = useState<string[]>([]);
+  const [positions, setPositions] = useState<string[]>([new Chess().fen()]);
+  const [currentPly, setCurrentPly] = useState<number>(0);
   const [logs, setLogs] = useState<LogEntry[]>([
     { ts: Date.now(), level: "info", message: "Listo. Pegá un PGN y apretá Analizar." },
   ]);
@@ -24,15 +70,54 @@ export function App(): JSX.Element {
       .join("\n");
   }, [logs]);
 
+  const currentFen = positions[currentPly] ?? START_FEN;
+  const boardCells = useMemo(() => fenToCells(currentFen), [currentFen]);
+
   function onAnalyze() {
     const trimmed = pgn.trim();
     if (!trimmed) {
       pushLog("error", "No hay PGN. Pegá un PGN primero.");
       return;
     }
-    pushLog("info", "PGN recibido. (Stage 00: todavía no parseamos ni evaluamos.)");
-    pushLog("info", `Longitud: ${trimmed.length} chars`);
-    pushLog("info", `PGN:\n${trimmed}`);
+
+    const parsed = new Chess();
+    try {
+      parsed.loadPgn(trimmed);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "PGN inválido";
+      pushLog("error", `No se pudo parsear el PGN: ${message}`);
+      return;
+    }
+
+    const parsedHeaders = parsed.header();
+    const parsedMoves = parsed.history();
+    const replay = new Chess();
+    const parsedPositions = [replay.fen()]; // Elegimos navegar por ply: una posición por SAN.
+
+    for (const san of parsedMoves) {
+      const result = replay.move(san);
+      if (!result) {
+        pushLog("error", `No se pudo reproducir la jugada SAN: ${san}`);
+        return;
+      }
+      parsedPositions.push(replay.fen());
+    }
+
+    setHeaders({
+      Event: parsedHeaders.Event ?? "-",
+      White: parsedHeaders.White ?? "-",
+      Black: parsedHeaders.Black ?? "-",
+      Result: parsedHeaders.Result ?? "-",
+    });
+    setMoves(parsedMoves);
+    setPositions(parsedPositions);
+    setCurrentPly(0);
+
+    pushLog("info", `PGN cargado correctamente (${parsedMoves.length} ply).`);
+    pushLog(
+      "info",
+      `Headers: ${parsedHeaders.White ?? "-"} vs ${parsedHeaders.Black ?? "-"} (${parsedHeaders.Result ?? "-"})`
+    );
   }
 
   return (
@@ -66,12 +151,86 @@ export function App(): JSX.Element {
 
         <section className="card">
           <h2>Tablero</h2>
-          <div className="boardPlaceholder" aria-label="Tablero placeholder">
-            <div className="boardPlaceholderInner">Placeholder</div>
+          <div className="metaGrid">
+            <div className="metaItem">
+              <span className="muted">Event</span>
+              <strong>{headers.Event}</strong>
+            </div>
+            <div className="metaItem">
+              <span className="muted">White</span>
+              <strong>{headers.White}</strong>
+            </div>
+            <div className="metaItem">
+              <span className="muted">Black</span>
+              <strong>{headers.Black}</strong>
+            </div>
+            <div className="metaItem">
+              <span className="muted">Result</span>
+              <strong>{headers.Result}</strong>
+            </div>
           </div>
-          <p className="muted">
-            Stage 01: acá va el tablero real + navegación de jugadas.
-          </p>
+
+          <div className="board" aria-label="Tablero">
+            {boardCells.map((piece, index) => {
+              const file = index % 8;
+              const rank = Math.floor(index / 8);
+              const dark = (file + rank) % 2 === 1;
+              return (
+                <div key={index} className={`square ${dark ? "dark" : "light"}`}>
+                  <span className="piece">{PIECE_TO_GLYPH[piece] ?? ""}</span>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="row controls">
+            <button className="btn secondary" onClick={() => setCurrentPly(0)} disabled={currentPly === 0}>
+              |&lt;
+            </button>
+            <button
+              className="btn secondary"
+              onClick={() => setCurrentPly((prev) => Math.max(0, prev - 1))}
+              disabled={currentPly === 0}
+            >
+              &lt;
+            </button>
+            <button
+              className="btn secondary"
+              onClick={() => setCurrentPly((prev) => Math.min(positions.length - 1, prev + 1))}
+              disabled={currentPly >= positions.length - 1}
+            >
+              &gt;
+            </button>
+            <button
+              className="btn secondary"
+              onClick={() => setCurrentPly(positions.length - 1)}
+              disabled={currentPly >= positions.length - 1}
+            >
+              &gt;|
+            </button>
+          </div>
+          <p className="muted">Ply actual: {currentPly} / {Math.max(positions.length - 1, 0)}</p>
+          <p className="muted">FEN: {currentFen}</p>
+        </section>
+
+        <section className="card moves">
+          <h2>Jugadas (SAN)</h2>
+          <p className="muted">Navegación por ply: cada SAN equivale a una posición.</p>
+          <div className="moveList">
+            {moves.length === 0 ? (
+              <div className="muted">Todavía no hay jugadas cargadas.</div>
+            ) : (
+              moves.map((san, index) => (
+                <button
+                  key={`${index}-${san}`}
+                  className={`moveBtn ${currentPly === index + 1 ? "active" : ""}`}
+                  onClick={() => setCurrentPly(index + 1)}
+                >
+                  {index + 1}. {san}
+                </button>
+              ))
+            )}
+          </div>
         </section>
 
         <section className="card logs">
