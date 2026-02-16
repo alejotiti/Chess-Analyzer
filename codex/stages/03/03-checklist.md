@@ -1,0 +1,4 @@
+- [ ] Evaluar posición actual muestra resultado
+- [ ] Resultados viejos se descartan al cambiar de jugada
+- [ ] mate se muestra como M#N
+- [ ] cp se muestra como +x.xx

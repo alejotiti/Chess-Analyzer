@@ -1,0 +1,4 @@
+- [ ] `npm install` OK
+- [ ] `npm run dev` abre la app
+- [ ] Se puede pegar PGN en textarea
+- [ ] Click en "Analizar" imprime en logs el PGN pegado

@@ -1,0 +1,4 @@
+- [ ] PGN válido carga sin crashear
+- [ ] PGN inválido muestra error claro
+- [ ] El tablero cambia al navegar
+- [ ] Lista de jugadas se renderiza y resalta el paso actual

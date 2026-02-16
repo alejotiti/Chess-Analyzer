@@ -1,0 +1,4 @@
+- [ ] La app no se congela al analizar (Worker OK)
+- [ ] init() completa (uci + isready)
+- [ ] analyzePosition devuelve bestmove y score
+- [ ] 2 análisis seguidos funcionan

@@ -1,0 +1,4 @@
+- [ ] Engine se carga on-demand
+- [ ] Settings afectan análisis
+- [ ] GH Pages funciona
+- [ ] Licencias presentes
