@@ -1,9 +1,15 @@
 .ui-card {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+  background: linear-gradient(180deg, color-mix(in srgb, var(--panel) 92%, white 8%), var(--panel));
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: var(--space-4);
   box-shadow: var(--shadow);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.ui-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.25);
 }
 
 .ui-button {
@@ -13,6 +19,7 @@
   font-weight: 600;
   color: var(--text);
   cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease, transform 120ms ease;
 }
 
 .ui-button-primary {
@@ -21,6 +28,7 @@
 
 .ui-button-primary:hover {
   background: rgba(120, 160, 255, 0.34);
+  transform: translateY(-1px);
 }
 
 .ui-button-secondary {
@@ -29,6 +37,11 @@
 
 .ui-button-secondary:hover {
   background: rgba(255, 255, 255, 0.12);
+  transform: translateY(-1px);
+}
+
+.ui-button:active {
+  transform: translateY(0);
 }
 
 .ui-button:disabled {
@@ -42,6 +55,7 @@
   background: rgba(0, 0, 0, 0.22);
   color: var(--text);
   padding: 6px 8px;
+  transition: border-color 140ms ease, background-color 140ms ease;
 }
 
 .ui-badge {
@@ -72,4 +86,3 @@ textarea:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
-

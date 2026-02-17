@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Chess } from "chess.js";
 import type { AnalyzeResult } from "../engine/stockfish";
 import { Badge, Button, Card, Select } from "../ui";
@@ -16,22 +16,23 @@ type EvalState = {
 };
 
 type AnalysisMode = "depth" | "movetime";
+type ThemeMode = "dark" | "light";
 
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 const PIECE_TO_GLYPH: Record<string, string> = {
-  p: "?",
-  r: "?",
-  n: "?",
-  b: "?",
-  q: "?",
-  k: "?",
-  P: "?",
-  R: "?",
-  N: "?",
-  B: "?",
-  Q: "?",
-  K: "?",
+  p: "\u265F",
+  r: "\u265C",
+  n: "\u265E",
+  b: "\u265D",
+  q: "\u265B",
+  k: "\u265A",
+  P: "\u2659",
+  R: "\u2656",
+  N: "\u2658",
+  B: "\u2657",
+  Q: "\u2655",
+  K: "\u2654",
 };
 
 const INITIAL_EVAL_STATE: EvalState = {
@@ -88,6 +89,10 @@ function evalBadgeTone(status: EvalStatus): "neutral" | "success" | "danger" {
   return "neutral";
 }
 
+function normalizeTheme(input: string | null): ThemeMode {
+  return input === "light" ? "light" : "dark";
+}
+
 export function App(): JSX.Element {
   const [pgn, setPgn] = useState<string>("");
   const [headers, setHeaders] = useState<HeaderInfo>({ Event: "-", White: "-", Black: "-", Result: "-" });
@@ -99,6 +104,7 @@ export function App(): JSX.Element {
   const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("depth");
   const [depthSetting, setDepthSetting] = useState<number>(12);
   const [movetimeSetting, setMovetimeSetting] = useState<number>(500);
+  const [theme, setTheme] = useState<ThemeMode>("dark");
   const [logs, setLogs] = useState<LogEntry[]>([
     { ts: Date.now(), level: "info", message: "Listo. Pegá un PGN y apretá Analizar." },
   ]);
@@ -109,6 +115,18 @@ export function App(): JSX.Element {
   const currentFen = positions[currentPly] ?? START_FEN;
   const boardCells = useMemo(() => fenToCells(currentFen), [currentFen]);
   const hasGameLoaded = moves.length > 0;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setTheme(normalizeTheme(window.localStorage.getItem("chess_analyzer_theme")));
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("chess_analyzer_theme", theme);
+    }
+  }, [theme]);
 
   function pushLog(level: LogEntry["level"], message: string): void {
     setLogs((prev) => [...prev, { ts: Date.now(), level, message }]);
@@ -236,12 +254,15 @@ export function App(): JSX.Element {
       <header className="header">
         <div>
           <h1>Chess Analyzer</h1>
-          <p className="muted">PGN + Stockfish en navegador | Stage 05 UI polish</p>
+          <p className="muted">PGN + Stockfish en navegador | Stage 06 product polish</p>
         </div>
+        <Button variant="secondary" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
+          Tema: {theme === "dark" ? "Dark" : "Light"}
+        </Button>
       </header>
 
       <main className="grid">
-        <Card>
+        <Card className="pgnCard">
           <h2>PGN</h2>
           <textarea
             value={pgn}
@@ -302,7 +323,7 @@ export function App(): JSX.Element {
           </div>
         </Card>
 
-        <Card>
+        <Card className="boardCard">
           <h2>Tablero</h2>
           <div className="metaGrid">
             <div className="metaItem"><span className="muted">Event</span><strong>{headers.Event}</strong></div>
@@ -352,19 +373,32 @@ export function App(): JSX.Element {
           <p className="muted">FEN: {currentFen}</p>
         </Card>
 
-        <Card className="evalCard">
-          <h2>Evaluación</h2>
+        <Card className="analysisPanel">
+          <h2>Panel de análisis</h2>
           <div className="evalStateRow">
             <span className="muted">Estado</span>
             <Badge tone={evalBadgeTone(evaluation.status)}>{evaluation.status}</Badge>
           </div>
           {evaluation.status === "analyzing" ? <p className="statusLoading">Analizando posición...</p> : null}
-          <div className="evalRow"><span className="muted">Score</span><strong>{evaluation.scoreLabel}</strong></div>
-          <div className="evalRow"><span className="muted">Best move</span><strong>{evaluation.bestmove}</strong></div>
-          <div className="evalRow"><span className="muted">PV</span><strong className="monoText">{evaluation.principalVariation}</strong></div>
-          <div className="evalBar"><div className="evalBarFill" style={{ width: `${evaluation.barPercent}%` }} /></div>
+
+          <div className="analysisSplit">
+            <div className="evalGauge" aria-label="Evaluation gauge">
+              <span className="gaugeLabelTop">White</span>
+              <div className="evalGaugeTrack">
+                <div className="evalGaugeFill" style={{ height: `${evaluation.barPercent}%` }} />
+              </div>
+              <span className="gaugeLabelBottom">Black</span>
+            </div>
+
+            <div className="analysisDetails">
+              <div className="evalRow"><span className="muted">Score</span><strong>{evaluation.scoreLabel}</strong></div>
+              <div className="evalRow"><span className="muted">Best move</span><strong>{evaluation.bestmove}</strong></div>
+              <div className="evalRow"><span className="muted">PV</span><strong className="monoText">{evaluation.principalVariation}</strong></div>
+            </div>
+          </div>
+
           {evaluation.status === "error" ? <p className="errorText">{evaluation.errorMessage}</p> : null}
-          <p className="muted">Barra clamped a cp +/-600.</p>
+          <p className="muted">Barra vertical animada (clamped a cp +/-600).</p>
         </Card>
 
         <Card className="moves">

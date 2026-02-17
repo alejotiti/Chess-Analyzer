@@ -3,10 +3,30 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Chess Analyzer</title>
+    <meta
+      name="description"
+      content="Chess Analyzer: pegá un PGN, navegá jugadas y evaluá posiciones con Stockfish en el navegador."
+    />
+    <meta name="theme-color" content="#0b0f14" />
+    <title>Chess Analyzer | PGN + Stockfish</title>
   </head>
   <body>
-    <div id="root"></div>
+    <noscript>
+      <div
+        style="
+          margin: 24px;
+          padding: 16px;
+          border-radius: 12px;
+          border: 1px solid #c33;
+          background: #fee;
+          color: #300;
+          font-family: Arial, sans-serif;
+        "
+      >
+        Esta app requiere JavaScript para funcionar. Activá JavaScript y recargá la página.
+      </div>
+    </noscript>
+    <div id="root" role="main" aria-label="Chess Analyzer App"></div>
     <script type="module" src="/src/app/main.tsx"></script>
   </body>
 </html>

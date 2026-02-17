@@ -20,3 +20,14 @@
   --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
 }
 
+:root[data-theme="light"] {
+  --bg: #f4f7fb;
+  --panel: #ffffff;
+  --text: #19212b;
+  --muted: #617184;
+  --border: rgba(20, 30, 40, 0.16);
+  --shadow: 0 10px 26px rgba(26, 35, 45, 0.08);
+  --focus: #2d7dff;
+  --danger: #c9303d;
+  --success: #217a3f;
+}
