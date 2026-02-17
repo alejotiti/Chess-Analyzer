@@ -13,32 +13,35 @@
 }
 
 .ui-button {
-  border: 1px solid #4b4b4b;
+  border: 1px solid var(--btn-secondary-border);
   border-radius: 8px;
   padding: 8px 10px;
   font-weight: 600;
-  color: #f1f1f1;
+  color: var(--control-text);
   cursor: pointer;
   transition: background-color 140ms ease, border-color 140ms ease, transform 120ms ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .ui-button-primary {
-  background: linear-gradient(180deg, #79b348 0%, #5f9733 100%);
-  border-color: #84bb56;
+  background: linear-gradient(180deg, var(--btn-primary-bg-1) 0%, var(--btn-primary-bg-2) 100%);
+  border-color: var(--btn-primary-border);
 }
 
 .ui-button-primary:hover {
-  background: linear-gradient(180deg, #87c255 0%, #6aa43a 100%);
+  background: linear-gradient(180deg, var(--btn-primary-bg-1-hover) 0%, var(--btn-primary-bg-2-hover) 100%);
   transform: translateY(-1px);
 }
 
 .ui-button-secondary {
-  background: #2a2a2a;
-  border-color: #3a3a3a;
+  background: var(--btn-secondary-bg);
+  border-color: var(--btn-secondary-border);
 }
 
 .ui-button-secondary:hover {
-  background: #333;
+  background: var(--btn-secondary-bg-hover);
   transform: translateY(-1px);
 }
 
@@ -52,10 +55,10 @@
 }
 
 .ui-select {
-  border: 1px solid #3a3a3a;
+  border: 1px solid var(--select-border);
   border-radius: 8px;
-  background: #171717;
-  color: #efefef;
+  background: var(--select-bg);
+  color: var(--select-text);
   padding: 6px 8px;
   transition: border-color 140ms ease, background-color 140ms ease;
 }
@@ -71,15 +74,15 @@
 }
 
 .ui-badge-neutral {
-  background: #2a2a2a;
+  background: var(--badge-neutral);
 }
 
 .ui-badge-success {
-  background: #2d4f1f;
+  background: var(--badge-success);
 }
 
 .ui-badge-danger {
-  background: #6a2a2a;
+  background: var(--badge-danger);
 }
 
 button:focus-visible,
