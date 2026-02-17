@@ -1,4 +1,6 @@
 import StockfishEngineWorker from "stockfish/bin/stockfish-18-lite-single.js?worker";
+import stockfishEngineScriptUrl from "stockfish/bin/stockfish-18-lite-single.js?url";
+import stockfishEngineWasmUrl from "stockfish/bin/stockfish-18-lite-single.wasm?url";
 
 type InitRequest = { id: number; type: "init" };
 type AnalyzeRequest = {
@@ -31,7 +33,10 @@ type LineWaiter = {
   timeoutId: number;
 };
 
-const engineWorker = new StockfishEngineWorker();
+const engineWorker =
+  import.meta.env.DEV
+    ? new StockfishEngineWorker()
+    : new Worker(`${stockfishEngineScriptUrl}#${encodeURIComponent(stockfishEngineWasmUrl)},worker`);
 const lineWaiters: LineWaiter[] = [];
 
 let initPromise: Promise<void> | null = null;
@@ -165,4 +170,3 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     postResponse({ id: msg.id, type: "error", error: message });
   }
 };
-
