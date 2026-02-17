@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+ï»¿import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Chess } from "chess.js";
 import type { AnalyzeResult } from "../engine/stockfish";
-import { Badge, Button, Card, Select } from "../ui";
+import { Badge, Button, Select } from "../ui";
 
 type LogEntry = { ts: number; level: "info" | "error"; message: string };
 type HeaderInfo = { Event: string; White: string; Black: string; Result: string };
@@ -18,22 +18,34 @@ type EvalState = {
 type AnalysisMode = "depth" | "movetime";
 type ThemeMode = "dark" | "light";
 
+type MovePair = {
+  number: number;
+  white: string;
+  black: string;
+  whitePly: number;
+  blackPly: number;
+};
+
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
-const PIECE_TO_GLYPH: Record<string, string> = {
-  p: "\u265F",
-  r: "\u265C",
-  n: "\u265E",
-  b: "\u265D",
-  q: "\u265B",
-  k: "\u265A",
-  P: "\u2659",
-  R: "\u2656",
-  N: "\u2658",
-  B: "\u2657",
-  Q: "\u2655",
-  K: "\u2654",
+const PIECE_TO_ASSET: Record<string, string> = {
+  p: "assets/pieces-basic-svg/pawn-b.png",
+  r: "assets/pieces-basic-svg/rook-b.png",
+  n: "assets/pieces-basic-svg/knight-b.png",
+  b: "assets/pieces-basic-svg/bishop-b.png",
+  q: "assets/pieces-basic-svg/queen-b.png",
+  k: "assets/pieces-basic-svg/king-b.png",
+  P: "assets/pieces-basic-svg/pawn-w.png",
+  R: "assets/pieces-basic-svg/rook-w.png",
+  N: "assets/pieces-basic-svg/knight-w.png",
+  B: "assets/pieces-basic-svg/bishop-w.png",
+  Q: "assets/pieces-basic-svg/queen-w.png",
+  K: "assets/pieces-basic-svg/king-w.png",
 };
+
+function pieceAsset(pieceCode: string): string {
+  return `${import.meta.env.BASE_URL}${PIECE_TO_ASSET[pieceCode]}`;
+}
 
 const INITIAL_EVAL_STATE: EvalState = {
   status: "idle",
@@ -43,10 +55,6 @@ const INITIAL_EVAL_STATE: EvalState = {
   barPercent: 50,
   errorMessage: "",
 };
-
-function formatTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString();
-}
 
 function fenToCells(fen: string): string[] {
   const [boardPart] = fen.split(" ");
@@ -80,7 +88,7 @@ function formatEngineScore(result: AnalyzeResult): string {
 function scoreToBarPercent(result: AnalyzeResult): number {
   const cp = result.score.type === "cp" ? result.score.value : result.score.value > 0 ? 600 : -600;
   const clamped = Math.max(-600, Math.min(600, cp));
-  return ((clamped + 600) / 1200) * 100;
+  return ((-clamped + 600) / 1200) * 100;
 }
 
 function evalBadgeTone(status: EvalStatus): "neutral" | "success" | "danger" {
@@ -106,7 +114,7 @@ export function App(): JSX.Element {
   const [movetimeSetting, setMovetimeSetting] = useState<number>(500);
   const [theme, setTheme] = useState<ThemeMode>("dark");
   const [logs, setLogs] = useState<LogEntry[]>([
-    { ts: Date.now(), level: "info", message: "Listo. Pegá un PGN y apretá Analizar." },
+    { ts: Date.now(), level: "info", message: "Listo. Pega un PGN y apreta Analizar." },
   ]);
 
   const analysisVersionRef = useRef<number>(0);
@@ -115,6 +123,20 @@ export function App(): JSX.Element {
   const currentFen = positions[currentPly] ?? START_FEN;
   const boardCells = useMemo(() => fenToCells(currentFen), [currentFen]);
   const hasGameLoaded = moves.length > 0;
+
+  const movePairs = useMemo<MovePair[]>(() => {
+    const pairs: MovePair[] = [];
+    for (let i = 0; i < moves.length; i += 2) {
+      pairs.push({
+        number: i / 2 + 1,
+        white: moves[i] ?? "",
+        black: moves[i + 1] ?? "",
+        whitePly: i + 1,
+        blackPly: i + 2,
+      });
+    }
+    return pairs;
+  }, [moves]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -132,16 +154,9 @@ export function App(): JSX.Element {
     setLogs((prev) => [...prev, { ts: Date.now(), level, message }]);
   }
 
-  const logText = useMemo(() => {
-    return logs
-      .slice(-200)
-      .map((item) => `[${formatTime(item.ts)}] ${item.level.toUpperCase()}: ${item.message}`)
-      .join("\n");
-  }, [logs]);
-
   async function getEngineModule() {
     if (!engineModuleRef.current) {
-      pushLog("info", "Cargando módulo de engine on-demand...");
+      pushLog("info", "Cargando modulo de engine on-demand...");
       engineModuleRef.current = import("../engine/stockfish");
     }
     return engineModuleRef.current;
@@ -191,10 +206,10 @@ export function App(): JSX.Element {
         barPercent: scoreToBarPercent(result),
         errorMessage: "",
       });
-      pushLog("info", `Evaluación: ${scoreLabel} | bestmove: ${result.bestmove}`);
+      pushLog("info", `Evaluacion: ${scoreLabel} | bestmove: ${result.bestmove}`);
     } catch (error) {
       if (requestVersion !== analysisVersionRef.current) return;
-      const message = error instanceof Error ? error.message : "Fallo al analizar posición";
+      const message = error instanceof Error ? error.message : "Fallo al analizar posicion";
       setEvaluation((prev) => ({ ...prev, status: "error", errorMessage: message }));
       pushLog("error", `Engine: ${message}`);
     }
@@ -203,7 +218,7 @@ export function App(): JSX.Element {
   function onAnalyze(): void {
     const trimmed = pgn.trim();
     if (!trimmed) {
-      pushLog("error", "No hay PGN. Pegá un PGN primero.");
+      pushLog("error", "No hay PGN. Pega un PGN primero.");
       return;
     }
 
@@ -211,7 +226,7 @@ export function App(): JSX.Element {
     try {
       parsed.loadPgn(trimmed);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "PGN inválido";
+      const message = error instanceof Error ? error.message : "PGN invalido";
       pushLog("error", `No se pudo parsear el PGN: ${message}`);
       return;
     }
@@ -243,189 +258,166 @@ export function App(): JSX.Element {
     setEvaluation(INITIAL_EVAL_STATE);
 
     pushLog("info", `PGN cargado correctamente (${parsedMoves.length} ply).`);
-    pushLog(
-      "info",
-      `Headers: ${parsedHeaders.White ?? "-"} vs ${parsedHeaders.Black ?? "-"} (${parsedHeaders.Result ?? "-"})`
-    );
   }
 
+  useEffect(() => {
+    if (!hasGameLoaded) return;
+    void evaluateCurrentPosition();
+    // Trigger engine evaluation on every move change.
+  }, [currentPly, hasGameLoaded]);
+
   return (
-    <div className="page">
-      <header className="header">
-        <div>
-          <h1>Chess Analyzer</h1>
-          <p className="muted">PGN + Stockfish en navegador | Stage 06 product polish</p>
+    <div className="reviewShell">
+      <section className="boardZone">
+        <div className="boardTopStrip">
+          <div className="playerTag">{headers.Black !== "-" ? headers.Black : "Jugador negras"}</div>
+          <div className="clockTag">9:59</div>
         </div>
-        <Button variant="secondary" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
-          Tema: {theme === "dark" ? "Dark" : "Light"}
-        </Button>
-      </header>
 
-      <main className="grid">
-        <Card className="pgnCard">
-          <h2>PGN</h2>
-          <textarea
-            value={pgn}
-            onChange={(e) => setPgn(e.target.value)}
-            placeholder="Pegá acá el PGN..."
-            className="textarea"
-            spellCheck={false}
-          />
-          <div className="row">
-            <Button onClick={onAnalyze}>Analizar</Button>
-            <Button variant="secondary" onClick={() => setPgn("")}>Limpiar</Button>
+        <div className="boardSurface" aria-label="Tablero">
+          <div className="leftEvalRail">
+            <div className="leftEvalFill" style={{ height: `${evaluation.barPercent}%` }} />
           </div>
-
-          <div className="settingsPanel">
-            <h3>Settings de análisis</h3>
-            <div className="row settingsRow">
-              <label className="settingLabel" htmlFor="mode">Modo</label>
-              <Select
-                id="mode"
-                value={analysisMode}
-                onChange={(e) => setAnalysisMode(e.target.value as AnalysisMode)}
-                options={[
-                  { label: "Depth", value: "depth" },
-                  { label: "Movetime", value: "movetime" },
-                ]}
-              />
-
-              {analysisMode === "depth" ? (
-                <>
-                  <label className="settingLabel" htmlFor="depth">Depth</label>
-                  <Select
-                    id="depth"
-                    value={depthSetting}
-                    onChange={(e) => setDepthSetting(Number(e.target.value))}
-                    options={[
-                      { label: "8", value: 8 },
-                      { label: "12", value: 12 },
-                      { label: "16", value: 16 },
-                    ]}
-                  />
-                </>
-              ) : (
-                <>
-                  <label className="settingLabel" htmlFor="movetime">Movetime</label>
-                  <Select
-                    id="movetime"
-                    value={movetimeSetting}
-                    onChange={(e) => setMovetimeSetting(Number(e.target.value))}
-                    options={[
-                      { label: "200 ms", value: 200 },
-                      { label: "500 ms", value: 500 },
-                      { label: "1000 ms", value: 1000 },
-                    ]}
-                  />
-                </>
-              )}
-            </div>
-          </div>
-        </Card>
-
-        <Card className="boardCard">
-          <h2>Tablero</h2>
-          <div className="metaGrid">
-            <div className="metaItem"><span className="muted">Event</span><strong>{headers.Event}</strong></div>
-            <div className="metaItem"><span className="muted">White</span><strong>{headers.White}</strong></div>
-            <div className="metaItem"><span className="muted">Black</span><strong>{headers.Black}</strong></div>
-            <div className="metaItem"><span className="muted">Result</span><strong>{headers.Result}</strong></div>
-          </div>
-
-          <div className="board" aria-label="Tablero">
+          <div className="boardGrid">
             {boardCells.map((piece, index) => {
               const file = index % 8;
               const rank = Math.floor(index / 8);
               const dark = (file + rank) % 2 === 1;
               return (
                 <div key={index} className={`square ${dark ? "dark" : "light"}`}>
-                  <span className="piece">{PIECE_TO_GLYPH[piece] ?? ""}</span>
+                  {piece !== "." ? (
+                    <img
+                      className="pieceImg"
+                      src={pieceAsset(piece)}
+                      alt={`piece-${piece}`}
+                      loading="eager"
+                      decoding="async"
+                    />
+                  ) : null}
                 </div>
               );
             })}
           </div>
+        </div>
 
-          <div className="row controls">
-            <Button variant="secondary" onClick={() => onPositionChange(0)} disabled={currentPly === 0}>|&lt;</Button>
-            <Button variant="secondary" onClick={() => onPositionChange(Math.max(0, currentPly - 1))} disabled={currentPly === 0}>
-              &lt;
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => onPositionChange(Math.min(positions.length - 1, currentPly + 1))}
-              disabled={currentPly >= positions.length - 1}
-            >
-              &gt;
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => onPositionChange(positions.length - 1)}
-              disabled={currentPly >= positions.length - 1}
-            >
-              &gt;|
-            </Button>
-            <Button variant="secondary" onClick={() => void evaluateCurrentPosition()} disabled={evaluation.status === "analyzing"}>
-              Evaluar posición actual
-            </Button>
+        <div className="boardBottomStrip">
+          <div className="playerTag">{headers.White !== "-" ? headers.White : "Jugador blancas"}</div>
+          <div className="clockTag">9:59</div>
+        </div>
+      </section>
+
+      <aside className="reviewPanel">
+        <div className="reviewHeader">
+          <strong>Revision de partida</strong>
+          <Button variant="secondary" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>Tema</Button>
+        </div>
+
+        <div className="reviewIntro">
+          <textarea
+            value={pgn}
+            onChange={(e) => setPgn(e.target.value)}
+            placeholder="Pega aca el PGN..."
+            className="pgnInput"
+            spellCheck={false}
+          />
+          <div className="row compactRow">
+            <Button onClick={onAnalyze}>Cargar PGN</Button>
+            <Button variant="secondary" onClick={() => setPgn("")}>Limpiar</Button>
           </div>
-
-          <p className="muted">Ply actual: {currentPly} / {Math.max(positions.length - 1, 0)}</p>
-          <p className="muted">FEN: {currentFen}</p>
-        </Card>
-
-        <Card className="analysisPanel">
-          <h2>Panel de análisis</h2>
-          <div className="evalStateRow">
-            <span className="muted">Estado</span>
+          <div className="row compactRow">
             <Badge tone={evalBadgeTone(evaluation.status)}>{evaluation.status}</Badge>
+            <span className="metaValue">Score: {evaluation.scoreLabel}</span>
+            <span className="metaValue">Best: {evaluation.bestmove}</span>
           </div>
-          {evaluation.status === "analyzing" ? <p className="statusLoading">Analizando posición...</p> : null}
-
-          <div className="analysisSplit">
-            <div className="evalGauge" aria-label="Evaluation gauge">
-              <span className="gaugeLabelTop">White</span>
-              <div className="evalGaugeTrack">
-                <div className="evalGaugeFill" style={{ height: `${evaluation.barPercent}%` }} />
-              </div>
-              <span className="gaugeLabelBottom">Black</span>
-            </div>
-
-            <div className="analysisDetails">
-              <div className="evalRow"><span className="muted">Score</span><strong>{evaluation.scoreLabel}</strong></div>
-              <div className="evalRow"><span className="muted">Best move</span><strong>{evaluation.bestmove}</strong></div>
-              <div className="evalRow"><span className="muted">PV</span><strong className="monoText">{evaluation.principalVariation}</strong></div>
-            </div>
+          <div className="row compactRow">
+            <label className="settingLabel" htmlFor="mode">Modo</label>
+            <Select
+              id="mode"
+              value={analysisMode}
+              onChange={(e) => setAnalysisMode(e.target.value as AnalysisMode)}
+              options={[
+                { label: "Depth", value: "depth" },
+                { label: "Movetime", value: "movetime" },
+              ]}
+            />
+            {analysisMode === "depth" ? (
+              <Select
+                id="depth"
+                value={depthSetting}
+                onChange={(e) => setDepthSetting(Number(e.target.value))}
+                options={[
+                  { label: "8", value: 8 },
+                  { label: "12", value: 12 },
+                  { label: "16", value: 16 },
+                ]}
+              />
+            ) : (
+              <Select
+                id="movetime"
+                value={movetimeSetting}
+                onChange={(e) => setMovetimeSetting(Number(e.target.value))}
+                options={[
+                  { label: "200 ms", value: 200 },
+                  { label: "500 ms", value: 500 },
+                  { label: "1000 ms", value: 1000 },
+                ]}
+              />
+            )}
           </div>
+        </div>
 
-          {evaluation.status === "error" ? <p className="errorText">{evaluation.errorMessage}</p> : null}
-          <p className="muted">Barra vertical animada (clamped a cp +/-600).</p>
-        </Card>
-
-        <Card className="moves">
-          <h2>Jugadas (SAN)</h2>
-          {!hasGameLoaded ? (
-            <div className="emptyState">Empty state: cargá un PGN para ver la lista de jugadas.</div>
+        <div className="movesPanel">
+          {movePairs.length === 0 ? (
+            <div className="emptyState">Pega un PGN para ver la lista de jugadas.</div>
           ) : (
-            <div className="moveList">
-              {moves.map((san, index) => (
-                <Button
-                  key={`${index}-${san}`}
-                  variant="secondary"
-                  className={`moveBtn ${currentPly === index + 1 ? "active" : ""}`}
-                  onClick={() => onPositionChange(index + 1)}
+            movePairs.map((pair) => (
+              <div className="moveRow" key={pair.number}>
+                <span className="moveNo">{pair.number}.</span>
+                <button
+                  className={`moveCell ${currentPly === pair.whitePly ? "active" : ""}`}
+                  onClick={() => onPositionChange(pair.whitePly)}
                 >
-                  {index + 1}. {san}
-                </Button>
-              ))}
-            </div>
+                  {pair.white || "-"}
+                </button>
+                <button
+                  className={`moveCell ${currentPly === pair.blackPly ? "active" : ""}`}
+                  onClick={() => onPositionChange(pair.blackPly)}
+                  disabled={!pair.black}
+                >
+                  {pair.black || "-"}
+                </button>
+              </div>
+            ))
           )}
-        </Card>
+        </div>
 
-        <Card className="logs">
-          <h2>Logs</h2>
-          <pre className="pre">{logText}</pre>
-        </Card>
-      </main>
+        <div className="analysisGraph">
+          <div className="analysisMarker" style={{ left: `${evaluation.barPercent}%` }} />
+        </div>
+
+        <div className="controlDock">
+          <Button variant="secondary" onClick={() => onPositionChange(0)} disabled={currentPly === 0}>|&lt;</Button>
+          <Button variant="secondary" onClick={() => onPositionChange(Math.max(0, currentPly - 1))} disabled={currentPly === 0}>
+            &lt;
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => onPositionChange(Math.min(positions.length - 1, currentPly + 1))}
+            disabled={currentPly >= positions.length - 1}
+          >
+            â–¶
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => onPositionChange(positions.length - 1)}
+            disabled={currentPly >= positions.length - 1}
+          >
+            &gt;|
+          </Button>
+        </div>
+      </aside>
     </div>
   );
 }
+
+
