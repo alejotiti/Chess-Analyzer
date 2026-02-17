@@ -1,34 +1,47 @@
 * { box-sizing: border-box; }
-html, body { height: 100%; overflow: hidden; }
+html, body { min-height: 100%; }
 body {
   margin: 0;
   font-family: var(--sans);
   background: var(--app-bg);
   color: var(--app-text);
+  overflow: auto;
   transition: background-color 160ms ease, color 160ms ease;
 }
 
 .reviewShell {
-  min-height: 100vh;
-  width: 2500px;
+  --shell-pad: clamp(8px, 1.2vw, 16px);
+  --shell-gap: clamp(10px, 1.2vw, 16px);
+  min-height: 100dvh;
+  width: min(100%, 1700px);
   margin: 0 auto;
-  padding: 14px;
+  padding: var(--shell-pad);
   display: flex;
-  gap: 14px;
+  gap: var(--shell-gap);
   justify-content: center;
+  align-items: flex-start;
 }
 
 .boardZone {
+  --rail-size: clamp(18px, 2.2vw, 26px);
+  --board-gap: clamp(4px, 0.8vw, 8px);
+  --board-size: clamp(560px, 76dvh, 860px);
   display: flex;
   gap: 8px;
-  min-width: 0;
+  flex: 0 0 auto;
   flex-direction: column;
-  height: calc(100vh - (var(--shell-pad) * 2));
-  width: 1080px;
+  width: calc(var(--rail-size) + var(--board-gap) + var(--board-size));
 }
 
 .boardTopStrip,
 .boardBottomStrip {
+  display: grid;
+  grid-template-columns: var(--rail-size) var(--board-size);
+  gap: var(--board-gap);
+}
+
+.stripInner {
+  grid-column: 2;
   background: var(--strip-bg);
   border: 1px solid var(--strip-border);
   border-radius: 8px;
@@ -36,6 +49,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  width: var(--board-size);
 }
 
 .playerTag {
@@ -56,8 +70,8 @@ body {
 
 .boardSurface {
   display: grid;
-  grid-template-columns: 26px 1fr;
-  gap: 6px;
+  grid-template-columns: var(--rail-size) var(--board-size);
+  gap: var(--board-gap);
   min-height: 0;
 }
 
@@ -79,8 +93,8 @@ body {
 }
 
 .boardGrid {
-  height: 100%;
-  width: 100%;
+  height: var(--board-size);
+  width: var(--board-size);
   aspect-ratio: 1 / 1;
   border: 1px solid #2b2b2b;
   display: grid;
@@ -128,10 +142,11 @@ body {
   border-radius: 10px;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto auto;
-  height: calc(100vh - 28px);
+  height: calc(100dvh - (var(--shell-pad) * 2));
   min-height: 0;
   overflow: hidden;
-  width: 400px;
+  width: clamp(340px, 28vw, 400px);
+  flex: 0 0 auto;
 }
 
 .reviewHeader {
@@ -285,11 +300,31 @@ body {
 
 @media (max-width: 1040px) {
   .reviewShell {
-    grid-template-columns: 1fr;
     width: 100%;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .boardZone {
+    --board-size: clamp(420px, 78dvh, 760px);
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .stripInner,
+  .boardGrid {
+    max-width: 100%;
   }
 
   .reviewPanel {
+    width: min(100%, calc(var(--rail-size) + var(--board-gap) + var(--board-size)));
+    height: auto;
     min-height: 560px;
+  }
+}
+
+@media (max-height: 760px) {
+  .boardZone {
+    --board-size: clamp(360px, 70dvh, 640px);
   }
 }

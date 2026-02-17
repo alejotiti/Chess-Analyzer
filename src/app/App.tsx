@@ -487,8 +487,10 @@ export function App(): JSX.Element {
     <div className="reviewShell">
       <section className="boardZone">
         <div className="boardTopStrip">
-          <div className="playerTag">{headers.Black !== "-" ? headers.Black : "Jugador negras"}</div>
-          <div className="clockTag">9:59</div>
+          <div className="stripInner">
+            <div className="playerTag">{headers.Black !== "-" ? headers.Black : "Jugador negras"}</div>
+            <div className="clockTag">9:59</div>
+          </div>
         </div>
 
         <div className="boardSurface" aria-label="Tablero">
@@ -527,8 +529,10 @@ export function App(): JSX.Element {
         </div>
 
         <div className="boardBottomStrip">
-          <div className="playerTag">{headers.White !== "-" ? headers.White : "Jugador blancas"}</div>
-          <div className="clockTag">9:59</div>
+          <div className="stripInner">
+            <div className="playerTag">{headers.White !== "-" ? headers.White : "Jugador blancas"}</div>
+            <div className="clockTag">9:59</div>
+          </div>
         </div>
       </section>
 
