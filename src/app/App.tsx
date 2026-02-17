@@ -1,6 +1,7 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Chess } from "chess.js";
-import type { AnalyzeResult } from "../engine/stockfish";
+import type { AnalyzeResult, AnalyzeOptions, EngineScore } from "../engine/stockfish";
+import { classifyMove, type MoveClassification, type MateScore, type EvalInput } from "../analysis/classifyMove";
 import { Badge, Button, Select } from "../ui";
 
 type LogEntry = { ts: number; level: "info" | "error"; message: string };
@@ -26,6 +27,28 @@ type MovePair = {
   blackPly: number;
 };
 
+type ParsedPly = {
+  plyIndex: number;
+  san: string;
+  uci: string;
+  from: string;
+  to: string;
+  sideToMove: "w" | "b";
+};
+
+type ClassifiedPly = {
+  plyIndex: number;
+  from: string;
+  to: string;
+  san?: string;
+  uci?: string;
+  evalBefore: EvalInput;
+  bestEvalAfter: EvalInput;
+  playedEvalAfter: EvalInput;
+  deltaCp: number;
+  classification: MoveClassification;
+};
+
 const START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 const PIECE_TO_ASSET: Record<string, string> = {
@@ -43,8 +66,41 @@ const PIECE_TO_ASSET: Record<string, string> = {
   K: "assets/pieces-basic-svg/king-w.png",
 };
 
+const CLASSIFICATION_TO_ASSET: Record<MoveClassification, string> = {
+  BLUNDER: "assets/move-classification/blunder.png",
+  MISTAKE: "assets/move-classification/mistake.png",
+  INACCURACY: "assets/move-classification/inaccuracy.png",
+  GOOD: "assets/move-classification/good.png",
+  EXCELLENT: "assets/move-classification/excellent.png",
+  BEST: "assets/move-classification/best.png",
+  BRILLIANT: "assets/move-classification/brilliant.png",
+};
+
+const PIECE_VALUE: Record<string, number> = {
+  p: 100,
+  n: 320,
+  b: 330,
+  r: 500,
+  q: 900,
+  k: 0,
+};
+
+const CLASSIFICATION_ORDER: MoveClassification[] = [
+  "BLUNDER",
+  "MISTAKE",
+  "INACCURACY",
+  "GOOD",
+  "EXCELLENT",
+  "BEST",
+  "BRILLIANT",
+];
+
 function pieceAsset(pieceCode: string): string {
   return `${import.meta.env.BASE_URL}${PIECE_TO_ASSET[pieceCode]}`;
+}
+
+function classificationAsset(classification: MoveClassification): string {
+  return `${import.meta.env.BASE_URL}${CLASSIFICATION_TO_ASSET[classification]}`;
 }
 
 const INITIAL_EVAL_STATE: EvalState = {
@@ -74,15 +130,24 @@ function fenToCells(fen: string): string[] {
   return cells;
 }
 
-function formatEngineScore(result: AnalyzeResult): string {
-  if (result.score.type === "mate") {
-    const sign = result.score.value < 0 ? "-" : "";
-    return `${sign}M#${Math.abs(result.score.value)}`;
+function normalizeEngineScore(score: EngineScore): EvalInput {
+  if (score.type === "cp") return score.value;
+  return { type: "mate", value: score.value } satisfies MateScore;
+}
+
+function formatEvalInput(score: EvalInput): string {
+  if (typeof score === "number") {
+    const pawns = score / 100;
+    const sign = pawns > 0 ? "+" : "";
+    return `${sign}${pawns.toFixed(2)}`;
   }
 
-  const pawns = result.score.value / 100;
-  const sign = pawns > 0 ? "+" : "";
-  return `${sign}${pawns.toFixed(2)}`;
+  const sign = score.value < 0 ? "-" : "";
+  return `${sign}M#${Math.abs(score.value)}`;
+}
+
+function formatEngineScore(result: AnalyzeResult): string {
+  return formatEvalInput(normalizeEngineScore(result.score));
 }
 
 function scoreToBarPercent(result: AnalyzeResult): number {
@@ -101,11 +166,45 @@ function normalizeTheme(input: string | null): ThemeMode {
   return input === "light" ? "light" : "dark";
 }
 
+function squareToIndex(square: string): number {
+  const file = square.charCodeAt(0) - "a".charCodeAt(0);
+  const rank = Number(square[1]);
+  const row = 8 - rank;
+  return row * 8 + file;
+}
+
+function parseUciMove(uci: string): { from: string; to: string; promotion?: string } | null {
+  if (!/^[a-h][1-8][a-h][1-8][qrbn]?$/.test(uci)) return null;
+  const from = uci.slice(0, 2);
+  const to = uci.slice(2, 4);
+  const promotion = uci.length === 5 ? uci[4] : undefined;
+  return { from, to, promotion };
+}
+
+function materialBalanceWhite(fen: string): number {
+  const chess = new Chess(fen);
+  const board = chess.board();
+  let white = 0;
+  let black = 0;
+
+  for (const row of board) {
+    for (const piece of row) {
+      if (!piece) continue;
+      const value = PIECE_VALUE[piece.type] ?? 0;
+      if (piece.color === "w") white += value;
+      else black += value;
+    }
+  }
+
+  return white - black;
+}
+
 export function App(): JSX.Element {
   const [pgn, setPgn] = useState<string>("");
   const [headers, setHeaders] = useState<HeaderInfo>({ Event: "-", White: "-", Black: "-", Result: "-" });
   const [moves, setMoves] = useState<string[]>([]);
   const [positions, setPositions] = useState<string[]>([new Chess().fen()]);
+  const [classifiedPlies, setClassifiedPlies] = useState<ClassifiedPly[]>([]);
   const [currentPly, setCurrentPly] = useState<number>(0);
   const [engineInitDone, setEngineInitDone] = useState<boolean>(false);
   const [evaluation, setEvaluation] = useState<EvalState>(INITIAL_EVAL_STATE);
@@ -117,12 +216,22 @@ export function App(): JSX.Element {
     { ts: Date.now(), level: "info", message: "Listo. Pega un PGN y apreta Analizar." },
   ]);
 
-  const analysisVersionRef = useRef<number>(0);
+  const evalVersionRef = useRef<number>(0);
+  const classificationVersionRef = useRef<number>(0);
   const engineModuleRef = useRef<Promise<typeof import("../engine/stockfish")> | null>(null);
 
   const currentFen = positions[currentPly] ?? START_FEN;
   const boardCells = useMemo(() => fenToCells(currentFen), [currentFen]);
   const hasGameLoaded = moves.length > 0;
+
+  const classifiedByPly = useMemo(() => {
+    const map = new Map<number, ClassifiedPly>();
+    for (const item of classifiedPlies) map.set(item.plyIndex, item);
+    return map;
+  }, [classifiedPlies]);
+
+  const currentClassification = classifiedByPly.get(currentPly) ?? null;
+  const overlaySquareIndex = currentClassification ? squareToIndex(currentClassification.to) : -1;
 
   const movePairs = useMemo<MovePair[]>(() => {
     const pairs: MovePair[] = [];
@@ -162,14 +271,18 @@ export function App(): JSX.Element {
     return engineModuleRef.current;
   }
 
+  function getAnalyzeOptions(): AnalyzeOptions {
+    return analysisMode === "depth" ? { depth: depthSetting } : { movetimeMs: movetimeSetting };
+  }
+
   function onPositionChange(nextPly: number): void {
     setCurrentPly(nextPly);
-    analysisVersionRef.current += 1;
+    evalVersionRef.current += 1;
     setEvaluation((prev) => (prev.status === "analyzing" ? { ...prev, status: "idle" } : prev));
   }
 
   async function evaluateCurrentPosition(): Promise<void> {
-    const requestVersion = ++analysisVersionRef.current;
+    const requestVersion = ++evalVersionRef.current;
     const fenAtRequest = currentFen;
     setEvaluation((prev) => ({ ...prev, status: "analyzing", errorMessage: "" }));
 
@@ -184,7 +297,7 @@ export function App(): JSX.Element {
         pushLog("info", "Stockfish listo.");
       }
 
-      const options = analysisMode === "depth" ? { depth: depthSetting } : { movetimeMs: movetimeSetting };
+      const options = getAnalyzeOptions();
       const modeMsg =
         analysisMode === "depth"
           ? `Analizando con depth ${depthSetting}...`
@@ -192,7 +305,7 @@ export function App(): JSX.Element {
       pushLog("info", modeMsg);
 
       const result = await stockfish.analyzePosition(fenAtRequest, options);
-      if (requestVersion !== analysisVersionRef.current) {
+      if (requestVersion !== evalVersionRef.current) {
         pushLog("info", "Resultado obsoleto descartado por cambio de jugada.");
         return;
       }
@@ -208,14 +321,105 @@ export function App(): JSX.Element {
       });
       pushLog("info", `Evaluacion: ${scoreLabel} | bestmove: ${result.bestmove}`);
     } catch (error) {
-      if (requestVersion !== analysisVersionRef.current) return;
+      if (requestVersion !== evalVersionRef.current) return;
       const message = error instanceof Error ? error.message : "Fallo al analizar posicion";
       setEvaluation((prev) => ({ ...prev, status: "error", errorMessage: message }));
       pushLog("error", `Engine: ${message}`);
     }
   }
 
-  function onAnalyze(): void {
+  async function analyzeMoveClassifications(nextPlies: ParsedPly[], nextPositions: string[]): Promise<void> {
+    if (nextPlies.length === 0) {
+      setClassifiedPlies([]);
+      return;
+    }
+
+    const requestVersion = ++classificationVersionRef.current;
+
+    try {
+      const engineModule = await getEngineModule();
+      const stockfish = engineModule.getStockfish();
+
+      if (!engineInitDone) {
+        pushLog("info", "Inicializando Stockfish (uci/isready)...");
+        await stockfish.init();
+        setEngineInitDone(true);
+        pushLog("info", "Stockfish listo.");
+      }
+
+      const options = getAnalyzeOptions();
+      const output: ClassifiedPly[] = [];
+      pushLog("info", `Clasificando ${nextPlies.length} jugadas...`);
+
+      for (let i = 0; i < nextPlies.length; i += 1) {
+        if (requestVersion !== classificationVersionRef.current) return;
+
+        const ply = nextPlies[i];
+        const beforeFen = nextPositions[ply.plyIndex - 1];
+        const playedAfterFen = nextPositions[ply.plyIndex];
+
+        const beforeResult = await stockfish.analyzePosition(beforeFen, options);
+        const playedAfterResult = await stockfish.analyzePosition(playedAfterFen, options);
+
+        const bestMoveParsed = parseUciMove(beforeResult.bestmove);
+        let bestAfterScore: EvalInput = normalizeEngineScore(playedAfterResult.score);
+
+        if (bestMoveParsed) {
+          const bestLineBoard = new Chess(beforeFen);
+          const bestMoveApplied = bestLineBoard.move(bestMoveParsed);
+          if (bestMoveApplied) {
+            const bestAfterFen = bestLineBoard.fen();
+            const bestAfterResult = await stockfish.analyzePosition(bestAfterFen, options);
+            bestAfterScore = normalizeEngineScore(bestAfterResult.score);
+          }
+        }
+
+        const beforeMaterialWhite = materialBalanceWhite(beforeFen);
+        const afterMaterialWhite = materialBalanceWhite(playedAfterFen);
+        const materialDeltaWhite = afterMaterialWhite - beforeMaterialWhite;
+        const materialChangeCp = ply.sideToMove === "w" ? materialDeltaWhite : -materialDeltaWhite;
+
+        const allowsMate =
+          playedAfterResult.score.type === "mate" && playedAfterResult.score.value > 0;
+
+        const evalBefore = normalizeEngineScore(beforeResult.score);
+        const playedEvalAfter = normalizeEngineScore(playedAfterResult.score);
+
+        const { classification, deltaCp } = classifyMove({
+          evalBefore,
+          bestEvalAfter: bestAfterScore,
+          playedEvalAfter,
+          sideToMove: ply.sideToMove,
+          allowsMate,
+          isSacrifice: materialChangeCp <= -100,
+          materialChangeCp,
+        });
+
+        output.push({
+          plyIndex: ply.plyIndex,
+          from: ply.from,
+          to: ply.to,
+          san: ply.san,
+          uci: ply.uci,
+          evalBefore,
+          bestEvalAfter: bestAfterScore,
+          playedEvalAfter,
+          deltaCp,
+          classification,
+        });
+      }
+
+      if (requestVersion !== classificationVersionRef.current) return;
+      setClassifiedPlies(output);
+      pushLog("info", `Clasificacion completada (${output.length} ply).`);
+    } catch (error) {
+      if (requestVersion !== classificationVersionRef.current) return;
+      const message = error instanceof Error ? error.message : "Fallo al clasificar jugadas";
+      pushLog("error", `Clasificacion: ${message}`);
+    }
+  }
+
+  async function onAnalyze(): Promise<void> {
     const trimmed = pgn.trim();
     if (!trimmed) {
       pushLog("error", "No hay PGN. Pega un PGN primero.");
@@ -235,14 +439,25 @@ export function App(): JSX.Element {
     const parsedMoves = parsed.history();
     const replay = new Chess();
     const parsedPositions = [replay.fen()];
+    const nextPlies: ParsedPly[] = [];
 
-    for (const san of parsedMoves) {
+    for (let i = 0; i < parsedMoves.length; i += 1) {
+      const san = parsedMoves[i];
+      const sideToMove = (replay.fen().split(" ")[1] as "w" | "b") ?? "w";
       const result = replay.move(san);
       if (!result) {
         pushLog("error", `No se pudo reproducir la jugada SAN: ${san}`);
         return;
       }
       parsedPositions.push(replay.fen());
+      nextPlies.push({
+        plyIndex: i + 1,
+        san: result.san,
+        uci: `${result.from}${result.to}${result.promotion ?? ""}`,
+        from: result.from,
+        to: result.to,
+        sideToMove,
+      });
     }
 
     setHeaders({
@@ -252,12 +467,14 @@ export function App(): JSX.Element {
       Result: parsedHeaders.Result ?? "-",
     });
     setMoves(parsedMoves);
+    setClassifiedPlies([]);
     setPositions(parsedPositions);
     setCurrentPly(parsedPositions.length - 1);
-    analysisVersionRef.current += 1;
     setEvaluation(INITIAL_EVAL_STATE);
 
     pushLog("info", `PGN cargado correctamente (${parsedMoves.length} ply).`);
+
+    void analyzeMoveClassifications(nextPlies, parsedPositions);
   }
 
   useEffect(() => {
@@ -294,6 +511,15 @@ export function App(): JSX.Element {
                       decoding="async"
                     />
                   ) : null}
+                  {currentClassification && index === overlaySquareIndex ? (
+                    <img
+                      className="classificationOverlay"
+                      src={classificationAsset(currentClassification.classification)}
+                      alt={currentClassification.classification.toLowerCase()}
+                      loading="eager"
+                      decoding="async"
+                    />
+                  ) : null}
                 </div>
               );
             })}
@@ -321,13 +547,24 @@ export function App(): JSX.Element {
             spellCheck={false}
           />
           <div className="row compactRow">
-            <Button onClick={onAnalyze}>Cargar PGN</Button>
+            <Button onClick={() => void onAnalyze()}>Cargar PGN</Button>
             <Button variant="secondary" onClick={() => setPgn("")}>Limpiar</Button>
           </div>
           <div className="row compactRow">
             <Badge tone={evalBadgeTone(evaluation.status)}>{evaluation.status}</Badge>
             <span className="metaValue">Score: {evaluation.scoreLabel}</span>
             <span className="metaValue">Best: {evaluation.bestmove}</span>
+            {currentClassification ? (
+              <span className="metaValue">Class: {currentClassification.classification}</span>
+            ) : null}
+          </div>
+          <div className="row compactRow classificationLegend">
+            {CLASSIFICATION_ORDER.map((item) => (
+              <span className="legendItem" key={item} title={item}>
+                <img className="legendIcon" src={classificationAsset(item)} alt={item.toLowerCase()} />
+                <span>{item}</span>
+              </span>
+            ))}
           </div>
           <div className="row compactRow">
             <label className="settingLabel" htmlFor="mode">Modo</label>
@@ -441,5 +678,3 @@ export function App(): JSX.Element {
     </div>
   );
 }
-
-

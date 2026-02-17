@@ -1,4 +1,4 @@
-﻿* { box-sizing: border-box; }
+* { box-sizing: border-box; }
 html, body { height: 100%; overflow: hidden; }
 body {
   margin: 0;
@@ -94,6 +94,7 @@ body {
   place-items: center;
   min-width: 0;
   min-height: 0;
+  position: relative;
 }
 
 .square.light { background: #e6e6cc; }
@@ -106,6 +107,19 @@ body {
   pointer-events: none;
   user-select: none;
   filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.35));
+  z-index: 1;
+}
+
+.classificationOverlay {
+  position: absolute;
+  top: 6%;
+  right: 6%;
+  width: 40%;
+  height: 40%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  z-index: 3;
 }
 
 .reviewPanel {
@@ -113,8 +127,9 @@ body {
   border: 1px solid var(--panel-border);
   border-radius: 10px;
   display: grid;
-  grid-template-rows: auto auto 1fr auto auto;
-  min-height: calc(100vh - 28px);
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  height: calc(100vh - 28px);
+  min-height: 0;
   overflow: hidden;
   width: 400px;
 }
@@ -156,8 +171,27 @@ body {
   font-size: 12px;
 }
 
+.classificationLegend {
+  gap: 6px;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--meta-text);
+  font-size: 10px;
+}
+
+.legendIcon {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+}
+
 .movesPanel {
   overflow: auto;
+  min-height: 0;
   padding: 8px 10px;
   border-bottom: 1px solid #2a2a2a;
 }
